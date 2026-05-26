@@ -1,4 +1,4 @@
-# Celebal Technology Data Science Internship
+# Celebal Technology Data Science Internship 
 
 ## Assignments
 All internship assignments are available in the `Assignments` folder.
