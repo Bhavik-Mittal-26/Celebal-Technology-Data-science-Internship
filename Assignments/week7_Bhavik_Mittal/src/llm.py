@@ -19,7 +19,7 @@ import torch
 
 
 class LocalLLM:
-    def __init__(self, model_name: str = "google/flan-t5-large"):
+    def __init__(self, model_name: str = "google/flan-t5-base"):
         """
         Loads the tokenizer + seq2seq model directly (rather than via
         transformers' pipeline() task shortcut). transformers v5 removed the
@@ -28,8 +28,14 @@ class LocalLLM:
         """
         self.model_name = model_name
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
-        self.tokenizer = AutoTokenizer.from_pretrained(model_name)
-        self.model = AutoModelForSeq2SeqLM.from_pretrained(model_name).to(self.device)
+        self.tokenizer = None
+        self.model = None
+
+    def _ensure_model(self):
+        if self.model is None or self.tokenizer is None:
+            self.tokenizer = AutoTokenizer.from_pretrained(self.model_name)
+            self.model = AutoModelForSeq2SeqLM.from_pretrained(self.model_name).to(self.device)
+        return self.model, self.tokenizer
 
     def build_prompt(self, question: str, context_chunks: list) -> str:
         """
@@ -55,20 +61,43 @@ class LocalLLM:
 
         prompt = self.build_prompt(question, context_chunks)
 
-        inputs = self.tokenizer(
+        # Ensure the tokenizer and model are loaded (lazy-init safe)
+        model, tokenizer = self._ensure_model()
+
+        inputs = tokenizer(
             prompt,
             return_tensors="pt",
             truncation=True,
             max_length=1024,
-        ).to(self.device)
+        )
 
-        with torch.no_grad():
-            output_ids = self.model.generate(
-                **inputs,
-                max_new_tokens=max_new_tokens,
-                do_sample=False,   # deterministic, grounded output
-                num_beams=4,
-            )
+        # Move all tensor inputs to the desired device
+        inputs = {k: v.to(self.device) for k, v in inputs.items()}
 
-        answer = self.tokenizer.decode(output_ids[0], skip_special_tokens=True)
+        # Use faster generation settings by default to reduce latency
+        gen_kwargs = dict(
+            **inputs,
+            max_new_tokens=min(max_new_tokens, 128),
+            do_sample=False,
+            num_beams=1,
+        )
+
+        # Run generation in a worker thread so we can timeout if it hangs
+        from concurrent.futures import ThreadPoolExecutor, TimeoutError
+
+        def do_generate():
+            with torch.no_grad():
+                return model.generate(**gen_kwargs)
+
+        gen_timeout = 60  # seconds
+        with ThreadPoolExecutor(max_workers=1) as ex:
+            future = ex.submit(do_generate)
+            try:
+                output_ids = future.result(timeout=gen_timeout)
+            except TimeoutError:
+                return "Generation timed out after {} seconds. Try a smaller model or shorter prompt.".format(
+                    gen_timeout
+                )
+
+        answer = tokenizer.decode(output_ids[0], skip_special_tokens=True)
         return answer.strip()

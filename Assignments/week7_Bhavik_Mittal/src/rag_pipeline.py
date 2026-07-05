@@ -24,27 +24,48 @@ class RAGPipeline:
     def __init__(
         self,
         embedding_model_name: str = "all-MiniLM-L6-v2",
-        llm_model_name: str = "google/flan-t5-large",
+        llm_model_name: str = "google/flan-t5-base",
         chunk_size: int = 800,
         chunk_overlap: int = 150,
     ):
         self.chunk_size = chunk_size
         self.chunk_overlap = chunk_overlap
+        self.embedding_model_name = embedding_model_name
+        self.llm_model_name = llm_model_name
 
-        self.embedder = EmbeddingModel(embedding_model_name)
-        self.vectorstore = VectorStore(self.embedder.embedding_dim)
-        self.llm = LocalLLM(llm_model_name)
+        self.embedder = None
+        self.vectorstore = None
+        self.llm = None
 
         self.metrics = {
             "num_documents": 0,
             "num_chunks": 0,
             "embedding_model": embedding_model_name,
-            "embedding_dim": self.embedder.embedding_dim,
+            "embedding_dim": None,
             "llm_model": llm_model_name,
             "chunk_size": chunk_size,
             "chunk_overlap": chunk_overlap,
             "vector_store": "FAISS (IndexFlatIP, cosine similarity)",
         }
+
+    def _ensure_embedder(self):
+        if self.embedder is None:
+            self.embedder = EmbeddingModel(self.embedding_model_name)
+            self.embedder._ensure_model()
+            self.metrics["embedding_dim"] = self.embedder.embedding_dim
+            self.vectorstore = VectorStore(self.embedder.embedding_dim)
+        return self.embedder
+
+    def _ensure_llm(self):
+        if self.llm is None:
+            self.llm = LocalLLM(self.llm_model_name)
+            # Make sure the tokenizer and model are actually loaded
+            try:
+                self.llm._ensure_model()
+            except Exception:
+                # If the LLM implementation doesn't support lazy init, ignore
+                pass
+        return self.llm
 
     def ingest(self, file_paths: list):
         """Load, chunk, embed, and index a list of document file paths."""
@@ -59,6 +80,7 @@ class RAGPipeline:
         if not chunks:
             raise ValueError("No text could be extracted from the uploaded document(s).")
 
+        self._ensure_embedder()
         texts = [c["text"] for c in chunks]
         embeddings = self.embedder.encode(texts)
         self.vectorstore.add(embeddings, chunks)
@@ -79,6 +101,8 @@ class RAGPipeline:
         """
         t0 = time.time()
 
+        self._ensure_embedder()
+        self._ensure_llm()
         query_embedding = self.embedder.encode_query(question)
         retrieved = self.vectorstore.search(query_embedding, top_k=top_k)
         answer = self.llm.generate_answer(question, retrieved)

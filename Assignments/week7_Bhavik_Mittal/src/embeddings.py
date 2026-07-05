@@ -20,12 +20,19 @@ class EmbeddingModel:
           - Strong general-purpose semantic search quality
         """
         self.model_name = model_name
-        self.model = SentenceTransformer(model_name)
-        self.embedding_dim = self.model.get_sentence_embedding_dimension()
+        self.model = None
+        self.embedding_dim = None
+
+    def _ensure_model(self):
+        if self.model is None:
+            self.model = SentenceTransformer(self.model_name)
+            self.embedding_dim = self.model.get_sentence_embedding_dimension()
+        return self.model
 
     def encode(self, texts: list) -> np.ndarray:
         """Encode a list of strings into a (N, embedding_dim) float32 array."""
-        embeddings = self.model.encode(
+        model = self._ensure_model()
+        embeddings = model.encode(
             texts,
             convert_to_numpy=True,
             show_progress_bar=False,
