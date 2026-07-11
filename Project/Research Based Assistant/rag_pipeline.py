@@ -21,7 +21,7 @@ from langchain_community.vectorstores import FAISS
 from langchain_groq import ChatGroq
 from langchain.chains import RetrievalQA
 from langchain.prompts import PromptTemplate
-
+import streamlit as st
 load_dotenv()
 
 EMBEDDING_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
@@ -82,6 +82,12 @@ def load_vectorstore(path: str, embeddings):
 def get_llm(temperature: float = 0.0):
     """Groq-hosted Llama model. Needs GROQ_API_KEY set in the environment."""
     api_key = os.getenv("GROQ_API_KEY")
+
+    try:
+        api_key = st.secrets["GROQ_API_KEY"]
+    except Exception:
+        pass
+
     if not api_key:
         raise EnvironmentError(
             "GROQ_API_KEY not found. Copy .env.example to .env and add your key "
