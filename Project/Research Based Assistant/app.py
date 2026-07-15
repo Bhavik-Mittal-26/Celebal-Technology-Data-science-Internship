@@ -109,7 +109,7 @@ with center_col_2:
         st.success(f"'{uploaded_file.name}' is already indexed and ready to query.")
 
     st.divider()
-    st.header("2. Ask questions")
+    st.header("2. Ask question")
 
     if st.session_state.chain is None:
         st.info("Upload and process a document to start asking questions.")
