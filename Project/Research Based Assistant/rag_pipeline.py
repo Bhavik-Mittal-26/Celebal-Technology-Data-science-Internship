@@ -93,6 +93,7 @@ def get_llm(temperature: float = 0.0):
             "GROQ_API_KEY not found. Copy .env.example to .env and add your key "
             "from https://console.groq.com/keys"
         )
+    
     return ChatGroq(model=GROQ_MODEL, temperature=temperature, api_key=api_key)
 
 
@@ -103,6 +104,7 @@ def build_qa_chain(vectorstore, k: int = 3):
     prompt = PromptTemplate(
         template=PROMPT_TEMPLATE, input_variables=["context", "question"]
     )
+
     chain = RetrievalQA.from_chain_type(
         llm=llm,
         retriever=retriever,
@@ -111,6 +113,7 @@ def build_qa_chain(vectorstore, k: int = 3):
         return_source_documents=True,
     )
     return chain
+
 
 
 def answer_question(chain, question: str):
